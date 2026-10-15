@@ -1,4 +1,6 @@
 # models/medicao.py
+from datetime import timedelta
+
 import mysql.connector
 from config import DB_CONFIG
 from identity import canonical_gateway_id, gateway_query_values
@@ -35,6 +37,42 @@ class MedicaoModel:
             if conn and conn.is_connected():
                 conn.rollback()
             raise e
+        finally:
+            if conn and conn.is_connected():
+                if cursor:
+                    cursor.close()
+                conn.close()
+
+    @staticmethod
+    def salvar_lote(data, gateway_id):
+        conn = None
+        cursor = None
+        try:
+            conn = mysql.connector.connect(**DB_CONFIG)
+            cursor = conn.cursor()
+            # Mesmo relogio/fuso de CURRENT_TIMESTAMP usado pelo INSERT legado.
+            # Uma unica referencia evita deslocamentos entre as leituras do lote.
+            cursor.execute('SELECT CURRENT_TIMESTAMP')
+            received_at = cursor.fetchone()[0]
+            values = [
+                (received_at - timedelta(minutes=reading['idade_min']),
+                 gateway_id, data['senderAddress'],
+                 *(reading[f'temp_ds{i}'] for i in range(1, 7)), data.get('rssi'))
+                for reading in data['medicoes']
+            ]
+            cursor.executemany(
+                """INSERT INTO medicoes
+                   (data_hora, gateway_id, sensor_id, temp_ds1, temp_ds2,
+                    temp_ds3, temp_ds4, temp_ds5, temp_ds6, rssi)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+                values,
+            )
+            conn.commit()
+            return True
+        except Exception:
+            if conn and conn.is_connected():
+                conn.rollback()
+            raise
         finally:
             if conn and conn.is_connected():
                 if cursor:

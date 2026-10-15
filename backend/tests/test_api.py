@@ -4,7 +4,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from app import app
-from config import DEFAULT_GATEWAY_ID
+from config import DEFAULT_GATEWAY_ID, STATUS_OFFLINE_MINUTES
 from identity import canonical_gateway_id, gateway_query_values
 from models.medicao import MedicaoModel
 
@@ -151,7 +151,7 @@ class TestLeiturasGet(unittest.TestCase):
     def test_status_retorna_um_item_por_gateway_e_sensor(self, mock_recentes):
         mock_recentes.return_value = [
             {'sensor_id': 1, 'gateway_id': 'gateway_node_1', 'data_hora': datetime.now().isoformat()},
-            {'sensor_id': 44204, 'gateway_id': 'gateway_node_2', 'data_hora': (datetime.now() - timedelta(hours=4)).isoformat()},
+            {'sensor_id': 44204, 'gateway_id': 'gateway_node_2', 'data_hora': (datetime.now() - timedelta(minutes=STATUS_OFFLINE_MINUTES + 1)).isoformat()},
         ]
 
         response = self.client.get('/api/status')

@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 
 from flask import Blueprint, jsonify, request
 
-from config import DEFAULT_GATEWAY_ID
+from config import DEFAULT_GATEWAY_ID, STATUS_ONLINE_MINUTES, STATUS_OFFLINE_MINUTES
 from identity import canonical_gateway_id
 from models.medicao import MedicaoModel
 
@@ -48,7 +48,33 @@ def api_salvar_dados():
         if rssi is not None and not is_valid_number(rssi):
             return jsonify({'success': False, 'error': 'rssi inválido'}), 400
 
-        if MedicaoModel.salvar(data, gateway_id):
+        if 'medicoes' in data:
+            medicoes = data['medicoes']
+            if not isinstance(medicoes, list) or not 1 <= len(medicoes) <= 16:
+                return jsonify({'success': False, 'error': 'medicoes deve conter de 1 a 16 leituras'}), 400
+            if any(f'temp_ds{i}' in data for i in range(1, 7)):
+                return jsonify({'success': False, 'error': 'Nao misture temperaturas avulsas e medicoes'}), 400
+            ages = set()
+            for medicao in medicoes:
+                if not isinstance(medicao, dict):
+                    return jsonify({'success': False, 'error': 'Medicao invalida'}), 400
+                age = medicao.get('idade_min')
+                if type(age) is not int or not 0 <= age <= 450 or age in ages:
+                    return jsonify({'success': False, 'error': 'idade_min deve ser inteiro unico entre 0 e 450'}), 400
+                ages.add(age)
+                for index in range(1, 7):
+                    key = f'temp_ds{index}'
+                    if key not in medicao or (medicao[key] is not None and not is_valid_number(medicao[key])):
+                        return jsonify({'success': False, 'error': f'{key} ausente ou invalido no lote'}), 400
+            if MedicaoModel.salvar_lote(data, gateway_id):
+                return jsonify({
+                    'success': True,
+                    'message': 'Lote salvo com sucesso',
+                    'sensor_id': sender,
+                    'gateway_id': gateway_id,
+                    'medicoes_salvas': len(medicoes),
+                }), 201
+        elif MedicaoModel.salvar(data, gateway_id):
             return jsonify({
                 'success': True,
                 'message': 'Medição salva com sucesso',
@@ -122,9 +148,9 @@ def get_status():
 
             delta = agora - ultima
             minutos = int(delta.total_seconds() / 60)
-            if delta < timedelta(hours=1):
+            if delta < timedelta(minutes=STATUS_ONLINE_MINUTES):
                 status = 'online'
-            elif delta < timedelta(hours=3):
+            elif delta < timedelta(minutes=STATUS_OFFLINE_MINUTES):
                 status = 'instavel'
             else:
                 status = 'offline'

@@ -16,3 +16,9 @@ DB_CONFIG = {
 
 SERVER_HOST = '0.0.0.0'
 SERVER_PORT = int(os.getenv('PORT', 5000))
+
+# Buffer E220: 16 amostras a cada 30 minutos; tolerancia de 1h no status.
+STATUS_ONLINE_MINUTES = int(os.getenv('STATUS_ONLINE_MINUTES', 540))
+STATUS_OFFLINE_MINUTES = int(os.getenv('STATUS_OFFLINE_MINUTES', 1440))
+if not 0 < STATUS_ONLINE_MINUTES < STATUS_OFFLINE_MINUTES:
+    raise ValueError('Status exige 0 < STATUS_ONLINE_MINUTES < STATUS_OFFLINE_MINUTES')

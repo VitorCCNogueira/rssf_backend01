@@ -1,0 +1,34 @@
+name: Backend tests
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: test-only
+          MYSQL_DATABASE: rssf_test
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="mysqladmin ping -h localhost -ptest-only"
+          --health-interval=10s --health-timeout=5s --health-retries=10
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      MYSQLHOST: 127.0.0.1
+      MYSQLUSER: root
+      MYSQLPASSWORD: test-only
+      MYSQLDATABASE: rssf_test
+      MYSQLPORT: 3306
+      RUN_MYSQL_INTEGRATION: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -r requirements.txt
+      - run: python -m unittest discover -s tests -v

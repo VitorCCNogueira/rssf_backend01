@@ -3,13 +3,14 @@ from datetime import datetime, timedelta
 from unittest.mock import MagicMock, patch
 
 from app import app
-from config import STATUS_ONLINE_MINUTES, STATUS_OFFLINE_MINUTES
+from config import LAB_ONLINE_MINUTES as STATUS_ONLINE_MINUTES, LAB_OFFLINE_MINUTES as STATUS_OFFLINE_MINUTES
 
 
 def payload():
     return {
         'senderAddress': 44204,
         'rssi': -80,
+        'gateway_id': 'gateway_lab_01',
         'medicoes': [
             {'idade_min': (15 - j) * 30,
              **{f'temp_ds{i}': 25 + j / 10 + i for i in range(1, 7)}}
@@ -20,6 +21,9 @@ def payload():
 
 class BatchTests(unittest.TestCase):
     def setUp(self):
+        self.lab_config = patch.multiple('config', LAB_SENSOR_ID='44204', LAB_GATEWAY_ID='gateway_lab_01')
+        self.lab_config.start()
+        self.addCleanup(self.lab_config.stop)
         self.client = app.test_client()
         self.received = datetime(2026, 10, 14, 3, 15)
         self.connection = MagicMock()
@@ -41,8 +45,8 @@ class BatchTests(unittest.TestCase):
         for row, reading in zip(rows, data['medicoes']):
             self.assertEqual(row, (
                 self.received - timedelta(minutes=reading['idade_min']),
-                'gateway_node_2', 44204,
-                *(reading[f'temp_ds{i}'] for i in range(1, 7)), -80,
+                'gateway_lab_01', 44204,
+                *(None for _ in range(6)), -80,
             ))
         self.assertEqual(rows[0][0].day, 13)  # atravessa a meia-noite
         self.assertEqual(rows[-1][0], self.received)
@@ -53,14 +57,14 @@ class BatchTests(unittest.TestCase):
 
     def test_single_reading_explicit_gateway_nullable_temperature_and_optional_rssi(self):
         data = payload()
-        data['gateway_id'] = 'gateway_remote'
+        data['gateway_id'] = 'gateway_lab_01'
         data.pop('rssi')
         data['medicoes'] = [data['medicoes'][-1]]
         data['medicoes'][0]['temp_ds1'] = None
         response = self.client.post('/api/salvar_dados', json=data)
         self.assertEqual(response.status_code, 201)
         row = self.cursor.executemany.call_args.args[1][0]
-        self.assertEqual(row[:4], (self.received, 'gateway_remote', 44204, None))
+        self.assertEqual(row[:4], (self.received, 'gateway_lab_01', 44204, None))
         self.assertIsNone(row[-1])
 
     def test_invalid_batch_is_rejected_before_connecting(self):
@@ -122,7 +126,7 @@ class BatchTests(unittest.TestCase):
         ):
             with self.subTest(minutes=minutes):
                 recent.return_value = [{
-                    'sensor_id': 44204, 'gateway_id': 'gateway_node_2',
+                    'sensor_id': 44204, 'gateway_id': 'gateway_lab_01',
                     'data_hora': self.received - timedelta(minutes=minutes),
                 }]
                 response = self.client.get('/api/status')

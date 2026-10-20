@@ -4,6 +4,7 @@ from datetime import timedelta
 import mysql.connector
 from config import DB_CONFIG
 from identity import canonical_gateway_id, gateway_query_values
+from monitoring import iso_utc, point_profile
 
 class MedicaoModel:
     SENSOR_COLUMNS = ('ds1', 'ds2', 'ds3', 'ds4', 'ds5', 'ds6')
@@ -81,13 +82,7 @@ class MedicaoModel:
 
     @staticmethod
     def _to_dict(row):
-        val = row[1]
-        if isinstance(val, (bytes, bytearray)):
-            created_at_str = val.decode('utf-8')
-        elif hasattr(val, 'isoformat'):
-            created_at_str = val.isoformat()
-        else:
-            created_at_str = str(val)
+        created_at_str = iso_utc(row[1])
 
         return {
             "id": row[0],
@@ -100,7 +95,8 @@ class MedicaoModel:
             "temp_ds4": row[7],
             "temp_ds5": row[8],
             "temp_ds6": row[9],
-            "rssi": row[10]
+            "rssi": row[10],
+            "profile": point_profile(row[3], canonical_gateway_id(row[3], row[2])),
         }
 
     @staticmethod
@@ -282,6 +278,53 @@ class MedicaoModel:
             ]
         except Exception as e:
             raise e
+        finally:
+            if conn and conn.is_connected():
+                if cursor:
+                    cursor.close()
+                conn.close()
+
+    @staticmethod
+    def get_history_summary(sensor_id, gateway_id, inicio=None, fim=None):
+        """Bound chart payloads to 1000 time buckets; stats use the full dataset."""
+        conn = cursor = None
+        try:
+            conn = mysql.connector.connect(**DB_CONFIG)
+            cursor = conn.cursor(dictionary=True)
+            gateways = gateway_query_values(sensor_id, gateway_id)
+            placeholders = ', '.join(['%s'] * len(gateways))
+            where = f'sensor_id = %s AND gateway_id IN ({placeholders})'
+            params = [sensor_id, *gateways]
+            if inicio and fim:
+                where += ' AND data_hora BETWEEN %s AND %s'
+                params.extend([inicio, fim])
+            cursor.execute(f'SELECT MIN(UNIX_TIMESTAMP(data_hora)) AS first_ts, '
+                           f'MAX(UNIX_TIMESTAMP(data_hora)) AS last_ts, COUNT(*) AS total '
+                           f'FROM medicoes WHERE {where}', tuple(params))
+            bounds = cursor.fetchone()
+            if not bounds or not bounds['total']:
+                return {'readings': [], 'total': 0, 'bucket_seconds': 1, 'aggregated': False}
+            first = int(bounds['first_ts'])
+            width = max(1, (int(bounds['last_ts']) - first) // 1000 + 1)
+            temperatures = ', '.join(
+                f'AVG(CASE WHEN temp_{channel} <> -127 AND NOT '
+                f'(sensor_id = 1 AND temp_{channel} = 85) THEN temp_{channel} END) AS temp_{channel}'
+                for channel in MedicaoModel.SENSOR_COLUMNS)
+            cursor.execute(
+                f'SELECT MIN(data_hora) AS data_hora, MAX(id) AS id, {temperatures}, '
+                f'AVG(rssi) AS rssi, COUNT(*) AS sample_count FROM medicoes WHERE {where} '
+                'GROUP BY FLOOR((UNIX_TIMESTAMP(data_hora) - %s) / %s) ORDER BY data_hora',
+                tuple([*params, first, width]))
+            rows = cursor.fetchall()
+            for row in rows:
+                row['data_hora'] = iso_utc(row['data_hora'])
+                row['sensor_id'] = sensor_id
+                row['gateway_id'] = gateway_id
+                for key in [*(f'temp_{s}' for s in MedicaoModel.SENSOR_COLUMNS), 'rssi']:
+                    if row[key] is not None:
+                        row[key] = float(row[key])
+            return {'readings': rows, 'total': bounds['total'], 'bucket_seconds': width,
+                    'aggregated': any(row['sample_count'] > 1 for row in rows)}
         finally:
             if conn and conn.is_connected():
                 if cursor:

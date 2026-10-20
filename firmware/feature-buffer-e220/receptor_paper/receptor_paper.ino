@@ -13,6 +13,9 @@
 
 #define BUFFER_SIZE 16
 
+// Deve ser identico a LAB_GATEWAY_ID no backend.
+const char* LAB_GATEWAY_ID = "gateway_lab_01";
+
 // Precisa bater com o CHANNEL do transmissor: ele retuna pra esse canal so
 // durante o envio (sendFixedMessage), entao o receptor tem que estar
 // escutando nele - nao basta usar a config default/residual do modulo.
@@ -76,12 +79,13 @@ void loop() {
       Packet packet = *(Packet*)rc.data;
       float rssi = (120.0 / 255.0) * rc.rssi - 120.0;
 
-      Serial.printf("deu certo!!!!!!");
+      Serial.printf("[RX] Pacote recebido: no=%u, medicoes=%u\n", packet.senderAddress, packet.qntd_medicoes);
 
       // JsonDocument (ArduinoJson v7) cresce sob demanda: 16 medicoes x 6 temperaturas
       // nao cabem nos 512 bytes do StaticJsonDocument antigo
       JsonDocument doc;
       doc["senderAddress"] = packet.senderAddress;
+      doc["gateway_id"] = LAB_GATEWAY_ID;
       doc["rssi"] = rssi;
 
       // Intervalo entre medicoes no transmissor (SAMPLE_TIME = 30 min)
@@ -89,7 +93,11 @@ void loop() {
 
       // Nunca le alem do vetor, mesmo que qntd_medicoes chegue corrompido
       int qntd = packet.qntd_medicoes;
-      if (qntd > BUFFER_SIZE) qntd = BUFFER_SIZE;
+      if (qntd < 1 || qntd > BUFFER_SIZE) {
+        Serial.println("[RX] Quantidade invalida; pacote descartado.");
+        rc.close();
+        return;
+      }
 
       // Tratamento de dados da temperatura - no pacote, a temperatura vem como int16_t, representada
       // em quantidades de frações de 1/128 graus Celsius
@@ -112,7 +120,14 @@ void loop() {
       serializeJson(doc, json);
       int httpCode = http.POST(json);
 
-      Serial.printf("Enviado: %s | Status: %d\n", json.c_str(), httpCode);
+      Serial.printf("[HTTP] no=%u gateway=%s medicoes=%d status=%d\n",
+                    packet.senderAddress, LAB_GATEWAY_ID, qntd, httpCode);
+      if (httpCode == 201) {
+        Serial.println("[HTTP] Gravacao confirmada pelo backend. Confira o ponto no dashboard.");
+      } else {
+        Serial.println("[HTTP] Sem confirmacao de gravacao. Confira rede, LAB_SENSOR_ID e LAB_GATEWAY_ID.");
+        if (httpCode > 0) Serial.println(http.getString());
+      }
       http.end();
     }
     rc.close();

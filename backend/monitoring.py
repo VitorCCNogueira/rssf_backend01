@@ -55,4 +55,3 @@ def status_for(reading, now=None):
         'minutos_desde_ultima': max(0, int(minutes)),
         'server_time': iso_utc(now), 'profile': profile,
     }
-

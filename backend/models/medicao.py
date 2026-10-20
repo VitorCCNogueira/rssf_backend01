@@ -332,4 +332,3 @@ class MedicaoModel:
                 if cursor:
                     cursor.close()
                 conn.close()
-

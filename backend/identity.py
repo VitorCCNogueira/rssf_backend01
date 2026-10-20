@@ -34,4 +34,3 @@ def gateway_query_values(sensor_id, gateway_id):
     if sensor_key in NODE_GATEWAYS and gateway_id == NODE_GATEWAYS[sensor_key]:
         return (gateway_id, LEGACY_GATEWAY_ID)
     return (gateway_id,)
-

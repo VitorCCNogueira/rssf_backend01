@@ -84,4 +84,3 @@ class MonitoringTests(unittest.TestCase):
         self.assertGreater(result['bucket_seconds'], 10000)
         self.assertTrue(result['readings'][0]['data_hora'].endswith('Z'))
         self.assertEqual(cursor.execute.call_args.args[1][:3], (1, 'gateway_node_1', 'gateway_legacy'))
-

@@ -4,7 +4,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from app import app
-from config import DEFAULT_GATEWAY_ID
+from config import DEFAULT_GATEWAY_ID, STATUS_OFFLINE_MINUTES
 from identity import canonical_gateway_id, gateway_query_values
 from models.medicao import MedicaoModel
 
@@ -127,7 +127,7 @@ class TestLeiturasGet(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         mock_periodo.assert_called_once_with(
-            '2026-07-10T10:00:00', '2026-07-10T11:00:00', '44204', 'gateway_node_2'
+            datetime(2026, 7, 10, 10), datetime(2026, 7, 10, 11), '44204', 'gateway_node_2'
         )
 
     @patch('models.medicao.MedicaoModel.get_recentes')
@@ -151,7 +151,7 @@ class TestLeiturasGet(unittest.TestCase):
     def test_status_retorna_um_item_por_gateway_e_sensor(self, mock_recentes):
         mock_recentes.return_value = [
             {'sensor_id': 1, 'gateway_id': 'gateway_node_1', 'data_hora': datetime.now().isoformat()},
-            {'sensor_id': 44204, 'gateway_id': 'gateway_node_2', 'data_hora': (datetime.now() - timedelta(hours=4)).isoformat()},
+            {'sensor_id': 44204, 'gateway_id': 'gateway_node_2', 'data_hora': (datetime.now() - timedelta(minutes=STATUS_OFFLINE_MINUTES + 1)).isoformat()},
         ]
 
         response = self.client.get('/api/status')
@@ -159,7 +159,7 @@ class TestLeiturasGet(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         payload = response.get_json()
         self.assertEqual({item['sensor_id'] for item in payload}, {1, 44204})
-        self.assertEqual(set(payload[0]), {'sensor_id', 'gateway_id', 'ultima_transmissao', 'status', 'minutos_desde_ultima'})
+        self.assertEqual(set(payload[0]), {'sensor_id', 'gateway_id', 'ultima_transmissao', 'status', 'minutos_desde_ultima', 'server_time', 'profile'})
 
 
 class TestPersistenceAndSchema(unittest.TestCase):

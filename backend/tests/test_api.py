@@ -26,10 +26,32 @@ class TestIdentityMapping(unittest.TestCase):
         )
         self.assertEqual(gateway_query_values(999, 'gateway_unknown'), ('gateway_unknown',))
 
+    def test_no_de_laboratorio_normaliza_gateway_antigo_desconhecido(self):
+        with patch.multiple('config', LAB_SENSOR_ID='21768', LAB_GATEWAY_ID='gateway_lab_01'):
+            self.assertEqual(canonical_gateway_id(21768, 'gateway_unknown'), 'gateway_lab_01')
+            self.assertIn('gateway_unknown', gateway_query_values(21768, 'gateway_lab_01'))
+
 
 class TestSalvarDados(unittest.TestCase):
     def setUp(self):
         self.client = app.test_client()
+
+    @patch('models.medicao.MedicaoModel.salvar', return_value=True)
+    def test_no_de_laboratorio_sem_gateway_envia_status_e_descarta_temperaturas(self, mock_salvar):
+        with patch.multiple('config', LAB_SENSOR_ID='21768', LAB_GATEWAY_ID='gateway_lab_01'):
+            response = self.client.post('/api/salvar_dados', json={
+                'senderAddress': 21768,
+                'temp_ds1': -2.09847e-38,
+                'temp_ds3': 2.09847e-38,
+                'rssi': -120,
+            })
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.get_json()['gateway_id'], 'gateway_lab_01')
+        saved_data = mock_salvar.call_args.args[0]
+        self.assertIsNone(saved_data['temp_ds1'])
+        self.assertIsNone(saved_data['temp_ds3'])
+        self.assertEqual(mock_salvar.call_args.args[1], 'gateway_lab_01')
 
     @patch('models.medicao.MedicaoModel.salvar', return_value=True)
     def test_nos_conhecidos_sem_gateway_recebem_identidades_estaveis_distintas(self, mock_salvar):

@@ -5,11 +5,13 @@
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
 
-#define TX_PIN 16
-#define RX_PIN 17
-#define AUX_PIN 22
+// Pinagem da PCB RSSF r0.3. Primeiro argumento da biblioteca = ESP32 RX
+// ligado ao TXD do E220; segundo = ESP32 TX ligado ao RXD do E220.
+#define RADIO_TXD_ESP_RX_PIN 17
+#define RADIO_RXD_ESP_TX_PIN 16
+#define AUX_PIN 5
+#define M0_PIN 2
 #define M1_PIN 4
-#define M0_PIN 19
 
 #define BUFFER_SIZE 16
 
@@ -33,7 +35,9 @@ struct __attribute__((__packed__)) Packet {
   SubPacket subpacket[BUFFER_SIZE];
 };
 
-LoRa_E220 e220((byte)TX_PIN, (byte)RX_PIN, &Serial2, (byte)AUX_PIN, (byte)M0_PIN, (byte)M1_PIN, UART_BPS_RATE_9600, SERIAL_8N1);
+LoRa_E220 e220((byte)RADIO_TXD_ESP_RX_PIN, (byte)RADIO_RXD_ESP_TX_PIN,
+                 &Serial2, (byte)AUX_PIN, (byte)M0_PIN, (byte)M1_PIN,
+                 UART_BPS_RATE_9600, SERIAL_8N1);
 const char* serverURL = "https://rssf-production.up.railway.app/api/salvar_dados";
 
 void setup() {

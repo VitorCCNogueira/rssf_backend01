@@ -29,3 +29,7 @@ Legado: online antes de 60 minutos, instavel de 60 ate antes de 180, offline a p
 A publicacao destes PRs nao faz deploy. Nao foi medida latencia em producao. A consulta consolidada reduz requisicoes duplicadas e o historico limitado reduz o volume transferido; estatisticas gerais ainda dependem do volume/indexacao do banco.
 
 O firmware de radio nao foi alterado: revise antes do ensaio a validacao da configuracao E220 e o descarte do buffer apos falha de envio. Os testes de backend/frontend nao comprovam autonomia de bateria nem entrega pelo radio.
+
+
+## Identidade ativa do laboratório
+O nó de bancada informa senderAddress 21768. No serviço RSSF/production do Railway, configure LAB_SENSOR_ID=21768 e LAB_GATEWAY_ID=gateway_lab_01; o receptor deve enviar literalmente esse gateway_id. Sem essas variáveis, a API rejeita os lotes como não configurados. Esta configuração de produção já foi aplicada. Não altere ID/gateway quando instalar outro hardware sem confirmar o novo senderAddress.

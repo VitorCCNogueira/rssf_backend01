@@ -20,3 +20,9 @@ Mantida a politica sem ACK/retransmissao: apos uma tentativa de envio o buffer e
 
 ## Verificacao
 Workflow firmware-e220.yml compila os dois sketches para ESP32 Dev Module. Valide na placa real: envio unico ao ligar, ausencia de envio apos primeiro wake de 30 minutos, lote de 16 apos 8 horas e novo envio ao reiniciar. Testes do backend cobrem lote unitario e lote completo. Compilacao nao substitui teste de radio/energia em bancada.
+
+
+## Pinagem da PCB RSSF (transmissor e receptor)
+Esta revisão usa a pinagem documentada no projeto PCB: TXD do E220 -> GPIO17 (RX do ESP32); RXD do E220 <- GPIO16 (TX do ESP32); AUX -> GPIO5; M0 -> GPIO2; M1 -> GPIO4. Os argumentos de UART passados ao construtor refletem essa orientação. GPIO18 fica sem uso, conforme o esquema da PCB; confira continuidade na sua unidade se ainda existir um fio antigo ligado a D18.
+
+A configuração física da produção foi adicionada no Railway: LAB_SENSOR_ID=21768 e LAB_GATEWAY_ID=gateway_lab_01. O primeiro identifica o transmissor do laboratório, e o segundo deve coincidir com o valor enviado pelo receptor. A imagem de log anterior mostrou o transmissor lendo AUX no GPIO22, incompatível com a PCB; grave ambos os sketches atualizados antes de testar.

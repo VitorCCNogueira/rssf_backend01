@@ -1,0 +1,23 @@
+name: Firmware E220
+on:
+  push:
+    paths: ['firmware/feature-buffer-e220/**', '.github/workflows/firmware-e220.yml']
+  pull_request:
+    paths: ['firmware/feature-buffer-e220/**', '.github/workflows/firmware-e220.yml']
+permissions:
+  contents: read
+jobs:
+  compile:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: arduino/setup-arduino-cli@v2
+      - name: Install ESP32 and libraries
+        run: |
+          arduino-cli core update-index --additional-urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
+          arduino-cli core install esp32:esp32@3.3.2 --additional-urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
+          arduino-cli lib install "EByte LoRa E220 library" "OneWire" "DallasTemperature" "ArduinoJson"
+      - name: Compile transmitter
+        run: arduino-cli compile --fqbn esp32:esp32:esp32 firmware/feature-buffer-e220/transmissor_paper
+      - name: Compile receiver
+        run: arduino-cli compile --fqbn esp32:esp32:esp32 firmware/feature-buffer-e220/receptor_paper

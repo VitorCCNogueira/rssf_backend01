@@ -1,4 +1,6 @@
 #include <Arduino.h>
+#include <esp_system.h>
+#include <esp_sleep.h>
 #include <LoRa_E220.h>
 #include <OneWire.h>
 #include <DallasTemperature.h>
@@ -15,7 +17,7 @@
 
 #define BUFFER_SIZE 16
 
-// Firmware em versão de produção.
+// Ensaio de laboratorio: envio inicial e, depois, lotes de 16 ciclos.
 
 // variáveis para definir endereço do nó sensor
 uint16_t NODE_ADDRESS;
@@ -54,7 +56,59 @@ DallasTemperature sensors(&oneWire);
 // os dois faz a UART funcionar so num sentido.
 LoRa_E220 e220((byte)TX_PIN, (byte)RX_PIN, &Serial2, (byte)AUX_PIN, (byte)M0_PIN, (byte)M1_PIN, UART_BPS_RATE_9600, SERIAL_8N1);
 
+// Sucesso aqui confirma somente a operacao local do radio, nao o POST HTTP.
+bool transmitPacket() {
+  if (!e220.begin()) {
+    Serial.println("[TX] Falha ao iniciar E220.");
+    return false;
+  }
+  delay(300);
+  unsigned long auxWaitStart = millis();
+  while (digitalRead(AUX_PIN) == LOW && millis() - auxWaitStart < 1000) delay(5);
+  if (digitalRead(AUX_PIN) == LOW) {
+    Serial.println("[TX] E220 ocupado: envio cancelado.");
+    return false;
+  }
+  delay(50);
+  ResponseStructContainer c = e220.getConfiguration();
+  if (c.status.code != E220_SUCCESS || c.data == nullptr) {
+    Serial.println("[TX] Falha ao ler configuracao E220.");
+    c.close();
+    return false;
+  }
+  Configuration configuration = *(Configuration*)c.data;
+  c.close();
+  byte wantAddH = NODE_ADDRESS >> 8;
+  byte wantAddL = NODE_ADDRESS & 0xFF;
+  if (configuration.CHAN != CHANNEL || configuration.ADDH != wantAddH
+      || configuration.ADDL != wantAddL
+      || configuration.TRANSMISSION_MODE.fixedTransmission != FT_FIXED_TRANSMISSION
+      || configuration.TRANSMISSION_MODE.enableRSSI != RSSI_ENABLED) {
+    configuration.ADDH = wantAddH;
+    configuration.ADDL = wantAddL;
+    configuration.CHAN = CHANNEL;
+    configuration.TRANSMISSION_MODE.fixedTransmission = FT_FIXED_TRANSMISSION;
+    configuration.TRANSMISSION_MODE.enableRSSI = RSSI_ENABLED;
+    ResponseStatus configResult = e220.setConfiguration(configuration, WRITE_CFG_PWR_DWN_SAVE);
+    if (configResult.code != E220_SUCCESS) {
+      Serial.println("[TX] Falha ao gravar configuracao E220.");
+      return false;
+    }
+  }
+  e220.setMode(MODE_0_NORMAL);
+  ResponseStatus result = e220.sendFixedMessage(
+      BROADCAST_ADDRESS, BROADCAST_ADDRESS, CHANNEL, &packet, sizeof(Packet));
+  Serial.printf("[TX] Resultado local: %s; confira HTTP 201 no receptor e o dashboard.\n",
+                result.getResponseDescription().c_str());
+  return result.code == E220_SUCCESS;
+}
+
 void setup() {
+  Serial.begin(115200);
+  const bool startup = esp_reset_reason() != ESP_RST_DEEPSLEEP;
+  // Reinicio interrompe o ensaio: descarte RTC antigo para nao atribuir idades falsas.
+  if (startup || packet.qntd_medicoes >= BUFFER_SIZE) packet = {};
+
   // atribuição de endereço para o nó sensor via endereço MAC
   uint64_t chipmac = ESP.getEfuseMac();
   for (int i = 0; i < 6; i++) mac[i] = (chipmac >> (8 * i)) & 0xFF;
@@ -80,52 +134,16 @@ void setup() {
     packet.qntd_medicoes++;
   }
 
-  if(packet.qntd_medicoes == BUFFER_SIZE){
-    e220.begin();
-
-    // Margem para o E220 estabilizar antes do getConfiguration().
-    delay(300);
-  
-    // Aguarda o modulo sinalizar que esta pronto: mexer na configuracao com ele
-    // ainda ocupado faz getConfiguration/setConfiguration falhar ou vir com lixo.
-    unsigned long auxWaitStart = millis();
-    while (digitalRead(AUX_PIN) == LOW && millis() - auxWaitStart < 1000) {
-      delay(5);
-    }
-    delay(50);
-
-    // So regrava se a config estiver diferente da esperada, para nao desgastar a
-    // EEPROM do radio a cada ciclo de sleep.
-    ResponseStructContainer c = e220.getConfiguration();
-    Configuration configuration = *(Configuration*)c.data;
-
-    byte wantAddH = (NODE_ADDRESS >> 8);
-    byte wantAddL = (NODE_ADDRESS & 0xFF);
-    if (c.status.code != E220_SUCCESS
-        || configuration.CHAN != CHANNEL
-        || configuration.ADDH != wantAddH
-        || configuration.ADDL != wantAddL
-        || configuration.TRANSMISSION_MODE.fixedTransmission != FT_FIXED_TRANSMISSION
-        || configuration.TRANSMISSION_MODE.enableRSSI != RSSI_ENABLED) {
-      configuration.ADDH = wantAddH;
-      configuration.ADDL = wantAddL;
-      configuration.CHAN = CHANNEL;
-      configuration.TRANSMISSION_MODE.fixedTransmission = FT_FIXED_TRANSMISSION;
-      configuration.TRANSMISSION_MODE.enableRSSI = RSSI_ENABLED;
-      ResponseStatus setRs = e220.setConfiguration(configuration, WRITE_CFG_PWR_DWN_SAVE);
-    }
-    c.close();
-
-    // Modo normal: receptor fica em escuta continua, entao nao ha preambulo WOR a emitir
-    e220.setMode(MODE_0_NORMAL);
-
-
-    ResponseStatus rs = e220.sendFixedMessage(BROADCAST_ADDRESS, BROADCAST_ADDRESS, CHANNEL, &packet, sizeof(Packet));
+  if (startup || packet.qntd_medicoes == BUFFER_SIZE) {
+    Serial.printf("[TX] %s | senderAddress=%u | medicoes=%u\n",
+                  startup ? "INICIAL" : "LOTE", NODE_ADDRESS, packet.qntd_medicoes);
+    const bool sent = transmitPacket();
+    if (!sent) Serial.println("[TX] Sem confirmacao local. Ligue o receptor e reinicie para testar novamente.");
+    // Sem ACK/retry no protocolo atual. Nao reenvie amostras antigas como idade zero.
     packet.qntd_medicoes = 0;
-    
-    // Entra em Deep Sleep para economizar bateria
     e220.setMode(MODE_3_SLEEP);
   }
+  Serial.flush();
 
   esp_sleep_enable_timer_wakeup((uint64_t)SAMPLE_TIME * 1000ULL);
   esp_deep_sleep_start();

@@ -2,6 +2,7 @@
 from datetime import datetime, timezone
 
 import config
+from identity import NODE_GATEWAYS
 
 
 def utc_datetime(value):
@@ -19,10 +20,12 @@ def iso_utc(value):
 
 
 def point_profile(sensor_id, gateway_id):
-    laboratory = bool(config.LAB_SENSOR_ID) and (
-        str(sensor_id) == str(int(config.LAB_SENSOR_ID))
-        and gateway_id == config.LAB_GATEWAY_ID
-    )
+    # Accept the receiver's fallback gateway as well as the configured ID, while
+    # preserving isolation if a different explicit gateway is sent for this sensor.
+    sensor_key = str(sensor_id)
+    laboratory = bool(config.LAB_SENSOR_ID) and sensor_key == str(int(config.LAB_SENSOR_ID)) and (
+        sensor_key not in NODE_GATEWAYS or gateway_id == config.LAB_GATEWAY_ID
+    ) and gateway_id in (config.LAB_GATEWAY_ID, config.DEFAULT_GATEWAY_ID, 'gateway_legacy', None, '')
     return {
         'mode': 'laboratory' if laboratory else 'legacy',
         'has_sensors': not laboratory,
@@ -52,3 +55,4 @@ def status_for(reading, now=None):
         'minutos_desde_ultima': max(0, int(minutes)),
         'server_time': iso_utc(now), 'profile': profile,
     }
+

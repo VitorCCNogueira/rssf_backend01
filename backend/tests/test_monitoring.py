@@ -22,6 +22,12 @@ class MonitoringTests(unittest.TestCase):
                     self.assertEqual(status_for(row, self.now)['status'], expected)
             self.assertEqual(point_profile(1, 'gateway_lab_01')['mode'], 'legacy')
 
+    def test_lab_sensor_id_survives_receiver_unknown_gateway_fallback(self):
+        with patch.multiple('config', LAB_SENSOR_ID='21768', LAB_GATEWAY_ID='gateway_lab_01'):
+            row = {'sensor_id': 21768, 'gateway_id': 'gateway_unknown', 'data_hora': self.now}
+            self.assertEqual(point_profile(21768, 'gateway_unknown')['mode'], 'laboratory')
+            self.assertEqual(status_for(row, self.now)['profile']['expected_interval_minutes'], 480)
+
     def test_timezone_offsets_are_equivalent_and_future_is_unknown(self):
         self.assertEqual(iso_utc('2026-10-19T12:00:00-03:00'), '2026-10-19T15:00:00Z')
         row = {'sensor_id': 1, 'gateway_id': 'gateway_node_1', 'data_hora': '2026-10-19T12:00:00-03:00'}
@@ -78,3 +84,4 @@ class MonitoringTests(unittest.TestCase):
         self.assertGreater(result['bucket_seconds'], 10000)
         self.assertTrue(result['readings'][0]['data_hora'].endswith('Z'))
         self.assertEqual(cursor.execute.call_args.args[1][:3], (1, 'gateway_node_1', 'gateway_legacy'))
+

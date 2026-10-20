@@ -83,20 +83,22 @@ class MedicaoModel:
     @staticmethod
     def _to_dict(row):
         created_at_str = iso_utc(row[1])
+        profile = point_profile(row[3], canonical_gateway_id(row[3], row[2]))
+        temperatures = (None, None, None, None, None, None) if not profile['has_sensors'] else row[4:10]
 
         return {
             "id": row[0],
             "data_hora": created_at_str,
             "gateway_id": canonical_gateway_id(row[3], row[2]),
             "sensor_id": row[3],
-            "temp_ds1": row[4],
-            "temp_ds2": row[5],
-            "temp_ds3": row[6],
-            "temp_ds4": row[7],
-            "temp_ds5": row[8],
-            "temp_ds6": row[9],
+            "temp_ds1": temperatures[0],
+            "temp_ds2": temperatures[1],
+            "temp_ds3": temperatures[2],
+            "temp_ds4": temperatures[3],
+            "temp_ds5": temperatures[4],
+            "temp_ds6": temperatures[5],
             "rssi": row[10],
-            "profile": point_profile(row[3], canonical_gateway_id(row[3], row[2])),
+            "profile": profile,
         }
 
     @staticmethod
@@ -330,3 +332,4 @@ class MedicaoModel:
                 if cursor:
                     cursor.close()
                 conn.close()
+

@@ -21,6 +21,13 @@ DB_CONFIG = {
 SERVER_HOST = '0.0.0.0'
 SERVER_PORT = int(os.getenv('PORT', 5000))
 
+MQTT_CONFIG = {
+    'BROKER':     os.getenv('MQTT_BROKER'),
+    'username':     os.getenv('MQTT_USERNAME'),
+    'password': os.getenv('MQTT_PASSWORD'),
+    'port':     int(os.getenv('MQTT_PORT') or 1883),
+}
+
 # Preserve the deployed nodes' cadence. Lab thresholds are point-specific.
 STATUS_ONLINE_MINUTES = int(os.getenv('STATUS_ONLINE_MINUTES', 60))
 STATUS_OFFLINE_MINUTES = int(os.getenv('STATUS_OFFLINE_MINUTES', 180))

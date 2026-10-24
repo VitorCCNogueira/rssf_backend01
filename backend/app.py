@@ -3,6 +3,7 @@ import os
 from flask import Flask
 from flask_cors import CORS
 from routes.medicoes import medicoes_bp
+import mqtt.client
 
 app = Flask(__name__)
 CORS(app)
